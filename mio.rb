@@ -36,9 +36,17 @@ module Mio
   ## Bootstrap the runtime
   object = Object.new
   
-  object["clone"]    = proc { |receiver, context| receiver.clone }
-  object["set_slot"] = proc { |receiver, context, name, value| receiver[name.call(context).value] = value.call(context) }
-  object["println"]  = proc { |receiver, context| puts receiver.value; Lobby["nil"] }
+  object["clone"] = proc do |receiver, context|
+    receiver.clone
+  end
+  object["set_slot"] = proc do |receiver, context, name, value|
+    name = name.call(context).value
+    receiver[name] = value.call(context)
+  end
+  object["println"] = proc do |receiver, context|
+    puts receiver.value
+    Lobby["nil"]
+  end
   
   # Introducing the Lobby! Where all the fantastic objects live and also the root context of evaluation.
   Lobby = object.clone
@@ -53,22 +61,23 @@ module Mio
   Lobby["List"]    = object.clone([])
   
   
-  ## Creating message object
+  ## Creating the message object
   
   Lobby["Message"] = object.clone
   
   # Message is a chain of tokens produced when parsing.
   #   1 println.
   # is parsed to:
-  #   Message.new("1",
+  #   Message.new("1", [],
   #               Message.new("println"))
   # You can then +call+ the top level Message to eval it.
   class Message < Object
-    attr_accessor :next, :name, :args
+    attr_accessor :name, :args, :next
     
-    def initialize(name)
+    def initialize(name, args=[], next_message=nil)
       @name = name
-      @args = []
+      @args = args
+      @next = next_message
       
       super(Lobby["Message"])
     end
@@ -76,7 +85,7 @@ module Mio
     # Call (eval) the message on the +receiver+.
     def call(receiver, context=receiver, *args)
       case @name
-      when ".", "\n" # Terminator
+      when "\n", "." # Terminator
         # reset receiver to object at begining of the chain.
         # eg.:
         #   hello there. yo
@@ -173,24 +182,18 @@ module Mio
   end
   
   
-  ## Creating the method object and helper method.
+  ## Creating the method object.
   
   Lobby["Method"] = object.clone
-  Lobby["method"] = proc { |receiver, context, message| Method.new(context, message) }
   
   class Method < Object
-    def initialize(context, message)
-      @definition_context = context
+    def initialize(message)
       @message = message
       super(Lobby["Method"])
     end
 
-    def call(receiver, calling_context, *args)
-      # Woo... lots of contexts here... lemme clear dat up, ya:
-      #   @definition_context: where the method was defined
-      #       calling_context: where the method was called
-      #        method_context: where the method body (message) is executing
-      method_context = @definition_context.clone
+    def call(receiver, calling_context=receiver, *args)
+      method_context = calling_context.clone
       method_context["self"] = receiver
       method_context["arguments"] = Lobby["List"].clone(args)
       # Note: no argument is evaluated here. Our lil' language only as lazy argument evaluation.
@@ -198,11 +201,16 @@ module Mio
       #       method.
       # Handy method to eval an argument in it's original context.
       method_context["eval_arg"] = proc do |receiver, context, at|
-        (args[at.call(context).value] || Lobby["nil"]).call(calling_context)
+        at_evaled = at.call(context).value
+        arg = args[at_evaled] || Lobby["nil"]
+        arg.call(calling_context)
       end
+      
       @message.call(method_context)
     end
   end
+  
+  Lobby["method"] = proc { |receiver, context, message| Method.new(message) }
   
   
   ## Putting it all together
@@ -210,68 +218,13 @@ module Mio
   def self.eval(code)
     # Parse
     message = Message.parse(code)
-    # puts message.to_s
     # Eval
     message.call(Lobby)
   end
   
+  def self.load(file)
+    eval File.read(file)
+  end
   
-  ## Implementing the language in itself
-  
-  eval <<-EOS
-    ## OO
-    
-    set_slot("dude", Object clone)
-    dude set_slot("name", "Bob")
-    # dude name println
-    dude set_slot("say_name", method(
-      arguments println
-      eval_arg(0) println
-      self name println
-    ))
-    dude say_name("hello...")
-    
-    
-    ## Boolean logic
-    
-    Object set_slot("and", method(
-      eval_arg(0)
-    ))
-    Object set_slot("or", method(
-      self
-    ))
-    
-    nil set_slot("and", nil)
-    nil set_slot("or", method(
-      eval_arg(0)
-    ))
-    
-    false set_slot("and", false)
-    false set_slot("or", method(
-      eval_arg(0)
-    ))
-    
-    "yo" or("hi") println
-    1 and(2 or(3)) println
-    
-    
-    ## Implementing if
-    
-    set_slot("if", method(
-      # eval condition
-      set_slot("condition", eval_arg(0))
-      condition and( # if true
-        eval_arg(1)
-      )
-      condition or( # if false (else)
-        eval_arg(2)
-      )
-    ))
-    
-    if(true,
-      "condition is true!" println,
-      # else
-      "nope" println
-    )
-  EOS
+  load "boot.mio"
 end
