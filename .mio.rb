@@ -1,6 +1,4 @@
 module Mio
-  ## Creating the runtime object model
-  
   class Object
     attr_accessor :slots, :protos, :value
     
@@ -14,63 +12,59 @@ module Mio
       return @slots[name] if @slots.key?(name)
       message = nil
       @protos.each { |proto| return message if message = proto[name] }
-      raise "Missing slot: #{name.inspect}"
+      raise "Missing slot: #{name}"
     end
     
-    def []=(name, message)
-      @slots[name] = message
+    def []=(name, value)
+      @slots[name] = value
     end
     
-    # The call method is used to eval an object.
-    # By default objects eval to themselves.
+    def clone(value=nil)
+      Object.new(self, value)
+    end
+    
+    # Eval
     def call(*)
       self
-    end
-    
-    def clone(val=nil)
-      val ||= @value && @value.dup rescue TypeError
-      Object.new(self, val)
     end
   end
   
   ## Bootstrap the runtime
+
   object = Object.new
-  
-  object["clone"] = proc do |receiver, context|
+
+  object["clone"] = proc do |receiver, caller|
     receiver.clone
   end
-  object["set_slot"] = proc do |receiver, context, name, value|
-    name = name.call(context).value
-    receiver[name] = value.call(context)
+
+  object["set_slot"] = proc do |receiver, caller, name, value|
+    name = name.call(caller).value
+    receiver[name] = value.call(caller)
   end
-  object["println"] = proc do |receiver, context|
+
+  object["println"] = proc do |receiver, caller|
     puts receiver.value
     Lobby["nil"]
   end
-  
-  # Introducing the Lobby! Where all the fantastic objects live and also the root context of evaluation.
+
   Lobby = object.clone
-  
-  Lobby["Lobby"]   = Lobby
-  Lobby["Object"]  = object
-  Lobby["nil"]     = object.clone(nil)
-  Lobby["true"]    = object.clone(true)
-  Lobby["false"]   = object.clone(false)
-  Lobby["Number"]  = object.clone(0)
-  Lobby["String"]  = object.clone("")
-  Lobby["List"]    = object.clone([])
-  
-  
-  ## Creating the message object
+
+  Lobby["Lobby"] = Lobby
+  Lobby["Object"] = object
+  Lobby["nil"] = object.clone(nil)
+  Lobby["true"] = object.clone(true)
+  Lobby["false"] = object.clone(false)
+  Lobby["Number"] = object.clone
+  Lobby["String"] = object.clone
+  Lobby["List"] = object.clone
+  Lobby["List"]["at"] = proc do |receiver, caller, index|
+    array = receiver.value
+    index = index.call(caller).value
+    array[index]
+  end
   
   Lobby["Message"] = object.clone
   
-  # Message is a chain of tokens produced when parsing.
-  #   1 println.
-  # is parsed to:
-  #   Message.new("1", [],
-  #               Message.new("println"))
-  # You can then +call+ the top level Message to eval it.
   class Message < Object
     attr_accessor :name, :args, :next
     
@@ -82,37 +76,26 @@ module Mio
       super(Lobby["Message"])
     end
     
-    # Call (eval) the message on the +receiver+.
-    def call(receiver, context=receiver, *args)
+    def call(receiver, caller=receiver)
       case @name
-      when "\n", "." # Terminator
-        # reset receiver to object at begining of the chain.
-        # eg.:
-        #   hello there. yo
-        #  ^           ^__ "." resets back to the receiver here
-        #  \________________________________________________/
-        value = context
-        
+      when "\n"
+        receiver = caller
+      
       when /^\d+/ # Number
-        value = Lobby["Number"].clone(@name.to_i)
+        receiver = Lobby["Number"].clone(@name.to_i)
         
       when /^"(.*)"$/ # String
-        value = Lobby["String"].clone($1)
+        receiver = Lobby["String"].clone($1)
         
-      else # Getting the value of a slot
-        # Lookup the slot on the receiver
+      else
         slot = receiver[name]
-        
-        # Eval the object in the slot
-        value = slot.call(receiver, context, *@args)
-        
+        receiver = slot.call(receiver, caller, *@args)
       end
       
-      # Pass to next message if some
       if @next
-        @next.call(value, context)
+        @next.call(receiver, caller)
       else
-        value
+        receiver
       end
     end
     
@@ -123,14 +106,14 @@ module Mio
       s << ", @next=\n" + @next.to_s(level + 1) if @next
       s + ">"
     end
-    
+
     # Parse a string into a chain of messages
     def self.parse(code)
-      parse_all(code, 1).last
+      parse_all(code).last
     end
-    
+
     private
-      def self.parse_all(code, line)
+      def self.parse_all(code, line=1)
         code = code.strip
         i = 0
         message = nil
@@ -181,8 +164,11 @@ module Mio
       end
   end
   
+  Lobby["Message"]["eval_on"] = proc do |receiver, caller, on|
+    on = on.call(caller)
+    receiver.call(on)
+  end
   
-  ## Creating the method object.
   
   Lobby["Method"] = object.clone
   
@@ -191,34 +177,23 @@ module Mio
       @message = message
       super(Lobby["Method"])
     end
-
-    def call(receiver, calling_context=receiver, *args)
-      method_context = calling_context.clone
-      method_context["self"] = receiver
-      method_context["arguments"] = Lobby["List"].clone(args)
-      # Note: no argument is evaluated here. Our lil' language only as lazy argument evaluation.
-      #       If you pass args to a method, you have to eval them explicitly, using the following
-      #       method.
-      # Handy method to eval an argument in it's original context.
-      method_context["eval_arg"] = proc do |receiver, context, at|
-        at_evaled = at.call(context).value
-        arg = args[at_evaled] || Lobby["nil"]
-        arg.call(calling_context)
-      end
+    
+    def call(receiver, caller=receiver, *args)
+      context = caller.clone
+      context["self"] = receiver
+      context["arguments"] = Lobby["List"].clone(args)
+      context["caller"] = caller
       
-      @message.call(method_context)
+      @message.call(context)
     end
   end
   
-  Lobby["method"] = proc { |receiver, context, message| Method.new(message) }
-  
-  
-  ## Putting it all together
+  Lobby["method"] = proc do |receiver, caller, message|
+    Method.new(message)
+  end
   
   def self.eval(code)
-    # Parse
     message = Message.parse(code)
-    # Eval
     message.call(Lobby)
   end
   
@@ -228,3 +203,16 @@ module Mio
   
   load "boot.mio"
 end
+
+# if __FILE__ == $PROGRAM_NAME
+#   if ARGV.empty?
+#     require "readline"
+#     loop do
+#       line = Readline::readline('>> ')
+#       Readline::HISTORY.push(line)
+#       p Mio.eval(line).value rescue puts $!
+#     end
+#   else
+#     Mio.load(ARGV.first)
+#   end
+# end

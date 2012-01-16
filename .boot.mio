@@ -1,55 +1,51 @@
-## OO
-
 set_slot("dude", Object clone)
 dude set_slot("name", "Bob")
-dude name println
+# dude name println
+
 dude set_slot("say_name", method(
   arguments println
-  eval_arg(0) println
+  arguments at(0) eval_on(caller) println
   self name println
 ))
-dude say_name("hello...")
+
+dude say_name("Marc")
 # <CLEAR>
 
 
-## Boolean logic
-
 Object set_slot("and", method(
-  eval_arg(0)
+  arguments at(0) eval_on(caller)
 ))
+
 Object set_slot("or", method(
   self
 ))
 
 nil set_slot("and", nil)
 nil set_slot("or", method(
-  eval_arg(0)
+  arguments at(0) eval_on(caller)
 ))
 
 false set_slot("and", false)
 false set_slot("or", method(
-  eval_arg(0)
+  arguments at(0) eval_on(caller)
 ))
 
-"yo" or("hi") println
-1 and(2 or(3)) println
-
-
-## Implementing if
 
 set_slot("if", method(
-  # eval condition
-  set_slot("condition", eval_arg(0))
-  condition and( # if true
-    eval_arg(1)
+  set_slot("condition", arguments at(0) eval_on(caller))
+  condition and(
+    # if true
+    arguments at(1) eval_on(caller)
   )
-  condition or( # if false (else)
-    eval_arg(2)
+  condition or(
+    # else
+    arguments at(2) eval_on(caller)
   )
 ))
 
+
 if(true,
-  "condition is true!" println,
+  "condition is true" println,
   # else
-  "condition is false!" println
+  "condition is false" println
 )
