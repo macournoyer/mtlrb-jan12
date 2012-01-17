@@ -13,10 +13,12 @@ class ObjectTest < Test::Unit::TestCase
   end
   
   def test_call_method
-    object = Mio::Lobby["Object"].clone
-    object["x"] = Mio::Lobby["String"].clone("works!")
-    receiver = object["x"]
+    object = Mio::Lobby["Object"].clone                 # set_slot("object", Object clone)
+    object["x"] = Mio::Lobby["String"].clone("works!")  # object set_slot("x", "works!")
     
-    assert_prints("works!\n") { receiver["println"].call(receiver, Mio::Lobby) }
+    assert_prints("works!\n") do
+      receiver = object["x"]
+      receiver["println"].call(receiver, Mio::Lobby)    # object x println
+    end
   end
 end
