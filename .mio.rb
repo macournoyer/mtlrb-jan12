@@ -10,9 +10,9 @@ module Mio
     
     def [](name)
       return @slots[name] if @slots.key?(name)
-      message = nil
-      @protos.each { |proto| return message if message = proto[name] }
-      raise "Missing slot: #{name}"
+      value = nil
+      @protos.each { |proto| return value if value = proto[name] }
+      raise "Slot not found: #{name}"
     end
     
     def []=(name, value)
@@ -23,43 +23,41 @@ module Mio
       Object.new(self, value)
     end
     
-    # Eval
     def call(*)
       self
     end
   end
   
-  ## Bootstrap the runtime
-
   object = Object.new
-
+  
   object["clone"] = proc do |receiver, caller|
     receiver.clone
   end
-
+  
   object["set_slot"] = proc do |receiver, caller, name, value|
     name = name.call(caller).value
     receiver[name] = value.call(caller)
   end
-
+  
   object["println"] = proc do |receiver, caller|
     puts receiver.value
     Lobby["nil"]
   end
-
+  
   Lobby = object.clone
-
+  
   Lobby["Lobby"] = Lobby
   Lobby["Object"] = object
-  Lobby["nil"] = object.clone(nil)
-  Lobby["true"] = object.clone(true)
-  Lobby["false"] = object.clone(false)
   Lobby["Number"] = object.clone
   Lobby["String"] = object.clone
+  Lobby["nil"] = object.clone(nil)
+  Lobby["false"] = object.clone(false)
+  Lobby["true"] = object.clone(true)
   Lobby["List"] = object.clone
+  
   Lobby["List"]["at"] = proc do |receiver, caller, index|
-    array = receiver.value
     index = index.call(caller).value
+    array = receiver.value
     array[index]
   end
   
@@ -72,7 +70,6 @@ module Mio
       @name = name
       @args = args
       @next = next_message
-      
       super(Lobby["Message"])
     end
     
@@ -80,15 +77,12 @@ module Mio
       case @name
       when "\n"
         receiver = caller
-      
-      when /^\d+/ # Number
+      when /^\d+/
         receiver = Lobby["Number"].clone(@name.to_i)
-        
-      when /^"(.*)"$/ # String
+      when /^"(.*)"$/
         receiver = Lobby["String"].clone($1)
-        
       else
-        slot = receiver[name]
+        slot = receiver[@name]
         receiver = slot.call(receiver, caller, *@args)
       end
       
@@ -101,7 +95,7 @@ module Mio
     
     def to_s(level=0)
       s = "  " * level
-      s << "<Message @name=#{@name}"
+      s << "<Message @name=#{@name.inspect}"
       s << ", @args=" + @args.inspect unless @args.empty?
       s << ", @next=\n" + @next.to_s(level + 1) if @next
       s + ">"
@@ -109,11 +103,11 @@ module Mio
 
     # Parse a string into a chain of messages
     def self.parse(code)
-      parse_all(code).last
+      parse_all(code, 1).last
     end
 
     private
-      def self.parse_all(code, line=1)
+      def self.parse_all(code, line)
         code = code.strip
         i = 0
         message = nil
@@ -169,7 +163,6 @@ module Mio
     receiver.call(on)
   end
   
-  
   Lobby["Method"] = object.clone
   
   class Method < Object
@@ -178,11 +171,11 @@ module Mio
       super(Lobby["Method"])
     end
     
-    def call(receiver, caller=receiver, *args)
+    def call(receiver, caller, *args)
       context = caller.clone
       context["self"] = receiver
-      context["arguments"] = Lobby["List"].clone(args)
       context["caller"] = caller
+      context["arguments"] = Lobby["List"].clone(args)
       
       @message.call(context)
     end
@@ -193,26 +186,21 @@ module Mio
   end
   
   def self.eval(code)
-    message = Message.parse(code)
-    message.call(Lobby)
+    Message.parse(code).call(Lobby)
   end
   
-  def self.load(file)
-    eval File.read(file)
-  end
-  
-  load "boot.mio"
+  eval File.read("boot.mio")
 end
 
-# if __FILE__ == $PROGRAM_NAME
-#   if ARGV.empty?
-#     require "readline"
-#     loop do
-#       line = Readline::readline('>> ')
-#       Readline::HISTORY.push(line)
-#       p Mio.eval(line).value rescue puts $!
-#     end
-#   else
-#     Mio.load(ARGV.first)
-#   end
-# end
+if __FILE__ == $PROGRAM_NAME
+  if ARGV.empty?
+    require "readline"
+    loop do
+      line = Readline::readline('>> ')
+      Readline::HISTORY.push(line)
+      p Mio.eval(line).value rescue puts $!
+    end
+  else
+    Mio.load(ARGV.first)
+  end
+end

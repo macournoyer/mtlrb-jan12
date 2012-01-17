@@ -1,17 +1,3 @@
-set_slot("dude", Object clone)
-dude set_slot("name", "Bob")
-# dude name println
-
-dude set_slot("say_name", method(
-  arguments println
-  arguments at(0) eval_on(caller) println
-  self name println
-))
-
-dude say_name("Marc")
-# <CLEAR>
-
-
 Object set_slot("and", method(
   arguments at(0) eval_on(caller)
 ))
@@ -20,32 +6,28 @@ Object set_slot("or", method(
   self
 ))
 
-nil set_slot("and", nil)
-nil set_slot("or", method(
-  arguments at(0) eval_on(caller)
-))
-
 false set_slot("and", false)
 false set_slot("or", method(
   arguments at(0) eval_on(caller)
 ))
 
+nil set_slot("and", nil)
+nil set_slot("or", method(
+  arguments at(0) eval_on(caller)
+))
 
 set_slot("if", method(
   set_slot("condition", arguments at(0) eval_on(caller))
   condition and(
-    # if true
     arguments at(1) eval_on(caller)
   )
   condition or(
-    # else
     arguments at(2) eval_on(caller)
   )
 ))
 
-
-if(true,
-  "condition is true" println,
-  # else
-  "condition is false" println
-)
+# if(false,
+#   "condition is true" println,
+#   # else
+#   "condition is false" println
+# )
