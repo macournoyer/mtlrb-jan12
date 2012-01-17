@@ -1,67 +1,5 @@
 module Mio
-  class Object
-    attr_accessor :slots, :protos, :value
-    
-    def initialize(proto=nil, value=nil)
-      @protos = [proto].compact
-      @value = value
-      @slots = {}
-    end
-    
-    def [](name)
-      return @slots[name] if @slots.key?(name)
-      value = nil
-      @protos.each { |proto| return value if value = proto[name] }
-      raise "Slot not found: #{name}"
-    end
-    
-    def []=(name, value)
-      @slots[name] = value
-    end
-    
-    def clone(value=nil)
-      Object.new(self, value)
-    end
-    
-    def call(*)
-      self
-    end
-  end
-  
-  object = Object.new
-  
-  object["clone"] = proc do |receiver, caller|
-    receiver.clone
-  end
-  
-  object["set_slot"] = proc do |receiver, caller, name, value|
-    name = name.call(caller).value
-    receiver[name] = value.call(caller)
-  end
-  
-  object["println"] = proc do |receiver, caller|
-    puts receiver.value
-    Lobby["nil"]
-  end
-  
-  Lobby = object.clone
-  
-  Lobby["Lobby"] = Lobby
-  Lobby["Object"] = object
-  Lobby["Number"] = object.clone
-  Lobby["String"] = object.clone
-  Lobby["nil"] = object.clone(nil)
-  Lobby["false"] = object.clone(false)
-  Lobby["true"] = object.clone(true)
-  Lobby["List"] = object.clone
-  
-  Lobby["List"]["at"] = proc do |receiver, caller, index|
-    index = index.call(caller).value
-    array = receiver.value
-    array[index]
-  end
-  
-  Lobby["Message"] = object.clone
+  Lobby["Message"] = RuntimeObject.clone
   
   class Message < Object
     attr_accessor :name, :args, :next
@@ -70,20 +8,29 @@ module Mio
       @name = name
       @args = args
       @next = next_message
+      
       super(Lobby["Message"])
     end
+    
+    # mioparse[TAB]
     
     def call(receiver, caller=receiver)
       case @name
       when "\n"
+        # x name\n
+        # x
         receiver = caller
-      when /^\d+/
+      when /^\d+/ # Number
         receiver = Lobby["Number"].clone(@name.to_i)
-      when /^"(.*)"$/
+      when /^"(.*)"$/ # String
         receiver = Lobby["String"].clone($1)
       else
         slot = receiver[@name]
-        receiver = slot.call(receiver, caller, *@args)
+        if slot.respond_to?(:call)
+          receiver = slot.call(receiver, caller, *@args)
+        else
+          receiver = slot
+        end
       end
       
       if @next
@@ -93,6 +40,8 @@ module Mio
       end
     end
     
+    ###############
+    
     def to_s(level=0)
       s = "  " * level
       s << "<Message @name=#{@name.inspect}"
@@ -101,13 +50,17 @@ module Mio
       s + ">"
     end
 
+    def ==(other)
+      @name == other.name && @args == other.args && @next == other.next
+    end
+
     # Parse a string into a chain of messages
     def self.parse(code)
-      parse_all(code, 1).last
+      parse_all(code).last
     end
 
     private
-      def self.parse_all(code, line)
+      def self.parse_all(code, line=1)
         code = code.strip
         i = 0
         message = nil
@@ -155,52 +108,11 @@ module Mio
           i += 1
         end
         messages
-      end
+      end 
   end
   
   Lobby["Message"]["eval_on"] = proc do |receiver, caller, on|
     on = on.call(caller)
     receiver.call(on)
-  end
-  
-  Lobby["Method"] = object.clone
-  
-  class Method < Object
-    def initialize(message)
-      @message = message
-      super(Lobby["Method"])
-    end
-    
-    def call(receiver, caller, *args)
-      context = caller.clone
-      context["self"] = receiver
-      context["caller"] = caller
-      context["arguments"] = Lobby["List"].clone(args)
-      
-      @message.call(context)
-    end
-  end
-  
-  Lobby["method"] = proc do |receiver, caller, message|
-    Method.new(message)
-  end
-  
-  def self.eval(code)
-    Message.parse(code).call(Lobby)
-  end
-  
-  eval File.read("boot.mio")
-end
-
-if __FILE__ == $PROGRAM_NAME
-  if ARGV.empty?
-    require "readline"
-    loop do
-      line = Readline::readline('>> ')
-      Readline::HISTORY.push(line)
-      p Mio.eval(line).value rescue puts $!
-    end
-  else
-    Mio.load(ARGV.first)
   end
 end

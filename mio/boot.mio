@@ -1,3 +1,15 @@
+set_slot("dude", Object clone)
+dude set_slot("name", "Bob")
+
+dude set_slot("say", method(
+  self name println
+  arguments println
+  arguments at(0) eval_on(caller)
+))
+
+dude say("Hello" println)
+# <CLEAR>
+
 Object set_slot("and", method(
   arguments at(0) eval_on(caller)
 ))
@@ -26,7 +38,7 @@ set_slot("if", method(
   )
 ))
 
-# if(false,
+# if(true,
 #   "condition is true" println,
 #   # else
 #   "condition is false" println
