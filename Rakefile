@@ -9,5 +9,5 @@ end
 task :default => :test
 
 task :complete do
-  sh "git co complete -- mio.rb mio/*"
+  sh "git co complete -- mio.rb mio/*.rb"
 end
