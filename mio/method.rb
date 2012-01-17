@@ -1,5 +1,5 @@
 module Mio
-  Lobby["Method"] = RuntimeObject.clone
+  # Lobby["Method"] = RuntimeObject.clone
   
   class Method < Object
     def initialize(message)
