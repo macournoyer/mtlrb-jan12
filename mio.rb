@@ -13,5 +13,5 @@ module Mio
     eval File.read(File.join(File.dirname(__FILE__), file))
   end
   
-  # load "mio/boot.mio"
+  load "mio/boot.mio"
 end

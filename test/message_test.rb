@@ -7,7 +7,8 @@ class MessageTest < Test::Unit::TestCase
       x
     EOS
     
-    expected = Mio::Message.new("set_slot", [Mio::Message.new('"x"'), Mio::Message.new("1")],
+    expected = Mio::Message.new("set_slot",
+      [Mio::Message.new('"x"'), Mio::Message.new("1")],
                  Mio::Message.new("\n", [],
                    Mio::Message.new("x")))
     
